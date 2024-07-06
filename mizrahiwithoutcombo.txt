@@ -1,0 +1,656 @@
+npm install -g npx
+ npx -p @angular/cli@13.0.3 ng new client
+ npm install bootstrap@5.1.3 
+ Add "styles": [
+              "src/styles.css",
+              "node_modules/bootstrap/dist/css/bootstrap.min.css"
+            ],
+npm i moment
+npm install json-server@0.17.0
+after "test": "ng test",
+add "json": "json-server --p 3500 restData.js" to package.json
+-------------------------------------------------------------------------
+ Create folder:
+	src/app/model  
+	src/app/core		
+   src/app/validation
+-------------------------------------------------------------------------
+The Contents of the client.model.ts File in the src/app/model Folder
+export class Client {
+    constructor(public id?: number,
+    public name?: string,
+    public category?: string,
+    public bdate?: Date,
+    public active: boolean = false,
+    public price?: number) { }
+   }
+-------------------------------------------------------------------------
+The Contents of the model.module.ts File in the src/app/model Folder   
+import { NgModule } from "@angular/core";
+import { StaticDataSource } from "./static.datasource";
+import { Model } from "./repository.model";
+import { HttpClientModule } from "@angular/common/http";
+import { RestDataSource, REST_URL } from "./rest.datasource";
+@NgModule({
+    imports: [HttpClientModule],
+    providers: [Model, RestDataSource,
+        { provide: REST_URL, useValue: `http://${location.hostname}:3500/clients` }]
+})
+export class ModelModule { }
+-------------------------------------------------------------------------
+The Contents of the repository.model.ts File in the src/app/model Folder
+import { Injectable } from "@angular/core";
+import { Client } from "./client.model";
+import { StaticDataSource } from "./static.datasource";
+
+import { Observable, ReplaySubject } from "rxjs";
+import { RestDataSource } from "./rest.datasource";
+@Injectable()
+export class Model {
+    private clients: Client[];
+    private locator = (p: Client, id?: number) => p.id == id;
+    private replaySubject: ReplaySubject<Client[]>
+    constructor(private dataSource: RestDataSource) {
+        this.clients = new Array<Client>();
+        this.replaySubject = new ReplaySubject<Client[]>(1);
+        this.dataSource.getData().subscribe(data => {
+            this.clients = data
+            this.replaySubject.next(data);
+            this.replaySubject.complete();
+        })
+        this.dataSource.getData().subscribe(data => this.clients = data)
+    }
+    getClients(): Client[] {
+        return this.clients;
+    }
+    getClient(id: number): Client | undefined {
+        return this.clients.find(p => this.locator(p, id));
+    }
+    getClientObservable(id: number): Observable<Client | undefined> {
+        let subject = new ReplaySubject<Client | undefined>(1);
+        this.replaySubject.subscribe(client => {
+            subject.next(this.clients.find(p => this.locator(p, id)));
+            subject.complete();
+        });
+        return subject;
+    }
+    /* saveClient(client: Client) {
+        if (client.id == 0 || client.id == null) {
+            client.id = this.generateID();
+            this.clients.push(client);
+        } else {
+            let index = this.clients
+                .findIndex(p => this.locator(p, client.id));
+            this.clients.splice(index, 1, client);
+        }
+    } */
+
+    saveClient(client: Client) {
+        if (client.id == 0 || client.id == null) {
+            this.dataSource.saveClient(client)
+                .subscribe(p => this.clients.push(p));
+        } else {
+            this.dataSource.updateClient(client).subscribe(p => {
+                let index = this.clients
+                    .findIndex(item => this.locator(item, p.id));
+                this.clients.splice(index, 1, p);
+            });
+        }
+    }
+
+    deleteClient(id: number) {
+        this.dataSource.deleteClient(id).subscribe(() => {
+            let index = this.clients.findIndex(p => this.locator(p, id));
+            if (index > -1) {
+                this.clients.splice(index, 1);
+            }
+        });
+    }
+}
+ -------------------------------------------------------------------------
+ The Contents of the rest.datasource.ts  File in the src/app/model Folder
+ import { Injectable, Inject, InjectionToken } from "@angular/core";
+import { HttpClient } from "@angular/common/http";
+import { Observable } from "rxjs";
+import { Client } from "./client.model";
+export const REST_URL = new InjectionToken("rest_url");
+@Injectable()
+export class RestDataSource {
+    constructor(private http: HttpClient,
+        @Inject(REST_URL) private url: string) { }
+    getData(): Observable<Client[]> {
+        return this.sendRequest<Client[]>("GET", this.url);
+    }
+    saveClient(client: Client): Observable<Client> {
+        return this.sendRequest<Client>("POST", this.url, client);
+    }
+    updateClient(client: Client): Observable<Client> {
+        return this.sendRequest<Client>("PUT",
+            `${this.url}/${client.id}`, client);
+    }
+    deleteClient(id: number): Observable<Client> {
+        return this.sendRequest<Client>("DELETE", `${this.url}/${id}`);
+    }
+    private sendRequest<T>(verb: string, url: string, body?: Client)
+        : Observable<T> {
+        return this.http.request<T>(verb, url, {
+            body: body
+        });
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the core.module.ts  File in the src/app/core Folder
+ import { NgModule } from "@angular/core";
+import { BrowserModule } from "@angular/platform-browser";
+import { FormsModule, ReactiveFormsModule } from "@angular/forms";
+import { ModelModule } from "../model/model.module";
+import { TableComponent } from "./table.component";
+import { FormComponent } from "./form.component";
+
+import { ValidationHelper } from "./validation_helper";
+import { ValidationErrorsDirective } from "./validationErrors.directive";
+import { HiLowValidatorDirective } from "../validation/hilow";
+import { RouterModule } from "@angular/router";
+@NgModule({
+    imports: [BrowserModule, FormsModule, ModelModule, ReactiveFormsModule,
+        RouterModule],
+    declarations: [TableComponent, FormComponent, ValidationHelper,
+        ValidationErrorsDirective, HiLowValidatorDirective],
+    exports: [ModelModule, TableComponent, FormComponent],
+
+})
+export class CoreModule { }
+-------------------------------------------------------------------------
+The Contents of the form.component.ts  File in the src/app/core Folder
+import { Component } from "@angular/core";
+import { FormControl, NgForm, Validators, FormGroup } from "@angular/forms";
+import { Client } from "../model/client.model";
+import { Model } from "../model/repository.model"
+
+import { MODES, SharedState, StateUpdate } from "./sharedState.service";
+import { LimitValidator } from "../validation/limit";
+import { ProhibitedValidator } from "../validation/prohibited";
+ import{LimitValidatorDate} from "../validation/dlimit"
+import { ActivatedRoute, Router } from "@angular/router";
+
+@Component({
+    selector: "paForm",
+    templateUrl: "form.component.html",
+    styleUrls: ["form.component.css"]
+})
+export class FormComponent {
+    client: Client = new Client();
+    editing: boolean = false;
+    clientForm: FormGroup = new FormGroup({
+        name: new FormControl("", {
+            validators: [
+                Validators.required,
+                Validators.minLength(3),
+                Validators.pattern("^[A-Za-z ]+$")
+            ],
+            updateOn: "change"
+        }),
+        bdate: new FormControl("", {
+            validators: [
+                Validators.required,
+                LimitValidatorDate.LimitDate(new Date)
+            ]
+        }),
+        active: new FormControl("", {}),
+        category: new FormControl("", {
+            validators: Validators.required,
+            asyncValidators: ProhibitedValidator.prohibited()
+        }),
+
+        price: new FormControl("", {
+            validators: [
+                Validators.required, Validators.pattern("^[0-9\.]+$"),
+                LimitValidator.Limit(300)
+            ]
+        })
+    });
+    constructor(private model: Model, activeRoute: ActivatedRoute,
+        private router: Router) {
+        this.editing = activeRoute.snapshot.params["mode"] == "edit";
+        let id = activeRoute.snapshot.params["id"];
+        if (id != null) {
+            model.getClientObservable(id).subscribe(p => {
+                Object.assign(this.client, p || new Client());
+              /*   this.client.name = activeRoute.snapshot.params["name"]
+                    ?? this.client.name;
+                this.client.category = activeRoute.snapshot.params["category"]
+                    ?? this.client.category;
+                let price = activeRoute.snapshot.params["price"];
+                if (price != null) {
+                    this.client.price == Number.parseFloat(price);
+                } */
+                this.clientForm.patchValue(this.client);
+            });
+        }
+    }
+
+
+    submitForm() {
+        if (this.clientForm.valid) {
+            Object.assign(this.client, this.clientForm.value);
+            this.model.saveClient(this.client);
+            this.router.navigateByUrl("/");
+        }
+    }
+    resetForm() {
+        this.editing = true;
+        this.client = new Client();
+        this.clientForm.reset();
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the form.component.html  File in the src/app/core Folder
+<form [formGroup]="clientForm" #form="ngForm" (ngSubmit)="submitForm()" (reset)="resetForm()">
+    <div class="form-group">
+        <label>Name</label>
+        <input class="form-control" formControlName="name" />
+        <ul class="text-danger list-unstyled mt-1">
+            <li *validationErrors="clientForm; control:'name'; let err">
+                {{ err }}
+            </li>
+        </ul>
+    </div>
+    <div class="form-group">
+        <label>Category</label>
+        <input class="form-control" formControlName="category" />
+        <ul class="text-danger list-unstyled mt-1">
+            <li *validationErrors="clientForm; control:'category'; let err">
+                {{ err }}
+            </li>
+        </ul>
+    </div>
+    <div class="form-group">
+        <label>bdate</label>
+        <input type="date" formControlName="bdate" class="form-control">
+        <ul class="text-danger list-unstyled mt-1">
+            <li *validationErrors="clientForm; control:'bdate'; let err">
+                {{ err }}
+            </li>
+        </ul>
+    </div>
+    <div class="form-group mt-3">
+        <div class="form-check">
+            <label>Active</label>
+            <input class="form-check-input" type="checkbox" formControlName="active" [checked]="true">
+        </div>
+        <ul class="text-danger list-unstyled mt-1">
+            <li *validationErrors="clientForm; control:'active'; let err">
+                {{ err }}
+            </li>
+        </ul>
+    </div>
+    <div class="form-group">
+        <label>Price</label>
+        <input class="form-control" formControlName="price" [high]=300 [low]=10 />
+        <ul class="text-danger list-unstyled mt-1">
+            <li *validationErrors="clientForm; control:'price'; let err">
+                {{ err }}
+            </li>
+        </ul>
+    </div>
+    <div class="mt-2">
+        <button type="submit" class="btn btn-primary" [class.btn-warning]="editing" [disabled]="form.invalid">
+            {{editing ? "Save" : "Create"}}
+        </button>
+        <button type="button" class="btn btn-secondary m-1" routerLink="/">
+            Cancel
+        </button>
+    </div>
+</form>
+-------------------------------------------------------------------------
+The Contents of the form.component.css  File in the src/app/core Folder
+input.ng-dirty.ng-invalid { border: 2px solid #ff0000 }
+input.ng-dirty.ng-valid { border: 2px solid #6bc502 }
+input.ng-pending { border: 2px solid #ffc107 }
+-------------------------------------------------------------------------
+The Contents of the table.component.ts  File in the src/app/core Folder
+import { Component } from "@angular/core";
+import { Client } from "../model/client.model";
+import { Model } from "../model/repository.model";
+ 
+@Component({
+    selector: "paTable",
+    templateUrl: "table.component.html"
+})
+export class TableComponent {
+    constructor(private model: Model) { }
+    
+    getClient(key: number): Client | undefined {
+        return this.model.getClient(key);
+    }
+
+    getClients(): Client[] {
+        return this.model.getClients();
+    }
+    deleteClient(key?: number) {
+        if (key != undefined) {
+            this.model.deleteClient(key);
+        }
+    }
+    
+}
+-------------------------------------------------------------------------
+The Contents of the table.component.html  File in the src/app/core Folder
+<!-- public id?: number,
+public name?: string,
+public category?: string,
+public bdate?: Date,
+public active: boolean = false,
+public price?: number  { } -->
+
+<table class="table table-sm table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Bdate</th>
+            <th>Active</th>
+            <th>Price</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr *ngFor="let item of getClients()">
+            <td>{{item.id}}</td>
+            <td>{{item.name}}</td>
+            <td>{{item.category}}</td>
+            <td>{{item.bdate | date:'dd/MM/yyyy'}}</td>
+            <td>{{item.active}}</td>
+            <td>{{item.price }}</td>
+            <!-- <td>{{item.price | currency:"USD" }}</td> -->
+            <td class="text-center">
+                <button class="btn btn-danger btn-sm m-1" (click)="deleteClient(item.id)">
+                    Delete
+                </button>
+                <button class="btn btn-warning btn-sm" [routerLink]="['/form', 'edit', item.id]">
+                    Edit
+                </button>
+            </td>
+
+        </tr>
+    </tbody>
+</table>
+<button class="btn btn-primary m-1" routerLink="/form/create">
+    Create New Client
+</button>
+-------------------------------------------------------------------------
+The Contents of the validation_helper.ts  File in the src/app/core Folder
+import { Pipe } from "@angular/core";
+import { FormControl, ValidationErrors } from "@angular/forms";
+@Pipe({
+    name: "validationFormat"
+})
+export class ValidationHelper {
+    transform(source: any, name: any): string[] {
+        if (source instanceof FormControl) {
+            return this.formatMessages((source as FormControl).errors, name)
+        }
+        return this.formatMessages(source as ValidationErrors, name)
+    }
+    formatMessages(errors: ValidationErrors | null, name: string): string[] {
+        let messages: string[] = [];
+        for (let errorName in errors) {
+            switch (errorName) {
+                case "required":
+                    messages.push(`You must enter a ${name}`);
+                    break;
+                case "minlength":
+                    messages.push(`A ${name} must be at least
+ ${errors['minlength'].requiredLength}
+characters`);
+                    break;
+                case "pattern":
+                    messages.push(`The ${name} contains
+ illegal characters`);
+                    break;
+                case "limit":
+                    messages.push(`The ${name} must be less than
+ ${errors['limit'].limit}`);
+                    break;
+                case "hilow":
+                    messages.push(`The ${name} must be between
+ ${errors['hilow'].low} and ${errors['hilow'].high}`);
+                    break;
+                case "prohibited":
+                    messages.push(`The ${name} may not contain
+ "${errors["prohibited"].prohibited}"`);
+                    break;
+                case "dlimit":
+                    messages.push(`The ${name} must be less than
+     ${errors['limit'].limit}`);
+                    break;
+            }
+        }
+        return messages;
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the validationErrors.directive.ts  File in the src/app/core Folder
+import { Directive, Input, TemplateRef, ViewContainerRef } from "@angular/core";
+import { FormGroup } from "@angular/forms";
+import { ValidationHelper } from "./validation_helper";
+@Directive({
+    selector: "[validationErrors]"
+})
+export class ValidationErrorsDirective {
+    constructor(private container: ViewContainerRef,
+        private template: TemplateRef<Object>) { }
+    @Input("validationErrorsControl")
+    name: string = ""
+    @Input("validationErrorsLabel")
+    label?: string;
+    @Input("validationErrors")
+    formGroup?: FormGroup;
+    ngOnInit() {
+        let formatter = new ValidationHelper();
+        if (this.formGroup && this.name) {
+            let control = this.formGroup?.get(this.name);
+            if (control) {
+                control.statusChanges.subscribe(() => {
+                    if (this.container.length > 0) {
+                        this.container.clear();
+                    }
+                    if (control && control.dirty && control.invalid
+                        && control.errors) {
+                        formatter.formatMessages(control.errors,
+                            this.label ?? this.name).forEach(err => {
+                                this.container.createEmbeddedView(this.template,
+                                    { $implicit: err });
+                            })
+                    }
+                })
+            }
+        }
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the dlimit.ts  File in the src/app/validation Folder
+import { AbstractControl, ValidationErrors, ValidatorFn } from "@angular/forms";
+import {formatDate, formatPercent} from '@angular/common';
+import { DatePipe } from '@angular/common'
+import {Moment} from 'moment/moment'
+import * as moment from "moment/moment";
+export class LimitValidatorDate {
+    constructor(public datepipe: DatePipe){}
+    static LimitDate(limit: Date): ValidatorFn {
+        return (control: AbstractControl): ValidationErrors | null => {
+
+            var formattedDate = moment(new Date()).format('YYYYMMDD');
+            var formatteYear = moment(new Date()).format('YYYY');
+            var lastdate =   formatteYear + '1231';
+            console.log(control.value) 
+            console.log(limit)
+             console.log(formattedDate)
+
+           let Dval =parseFloat(formatDate(limit, 'yyyyMMdd','en'));
+           var dateString=control.value;
+         //  console.log(dateString)
+           var newdateConv = dateString.split("-").join("");
+         //  console.log(newdateConv)
+           var newData = parseFloat(dateString.replace('-','').replace('-',''));
+            if (  Dval > newData) {
+                return { "limit": { "limit": limit, "actualValue": Dval } };
+            }
+            return null;
+        }
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the hilow.ts  File in the src/app/validation Folder
+import { Directive, Input, SimpleChanges } from "@angular/core";
+import {
+    AbstractControl, NG_VALIDATORS, ValidationErrors,
+    Validator, ValidatorFn
+} from "@angular/forms";
+export class HiLowValidator {
+    static HiLow(high: number, low: number): ValidatorFn {
+        return (control: AbstractControl): ValidationErrors | null => {
+            let val = parseFloat(control.value);
+            if (isNaN(val) || val > high || val < low) {
+                return { "hilow": { "high": high, "low": low, "actualValue": val } };
+            }
+            return null;
+        }
+    }
+}
+@Directive({
+    selector: 'input[high][low]',
+    providers: [{
+        provide: NG_VALIDATORS, useExisting: HiLowValidatorDirective,
+        multi: true
+    }]
+})
+export class HiLowValidatorDirective implements Validator {
+    @Input()
+    high: number | string | undefined
+    @Input()
+    low: number | string | undefined
+    validator?: (control: AbstractControl) => ValidationErrors | null;
+    ngOnChanges(changes: SimpleChanges): void {
+        if ("high" in changes || "low" in changes) {
+            let hival = typeof (this.high) == "string"
+                ? parseInt(this.high) : this.high;
+            let loval = typeof (this.low) == "string"
+                ? parseInt(this.low) : this.low;
+            this.validator = HiLowValidator.HiLow(hival ?? Number.MAX_VALUE,
+                loval ?? 0);
+        }
+    }
+    validate(control: AbstractControl): ValidationErrors | null {
+        return this.validator?.(control) ?? null;
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the limit.ts  File in the src/app/validation Folder
+import { AbstractControl, ValidationErrors, ValidatorFn } from "@angular/forms";
+export class LimitValidator {
+    static Limit(limit: number): ValidatorFn {
+        return (control: AbstractControl): ValidationErrors | null => {
+            let val = parseFloat(control.value);
+            if (isNaN(val) || val > limit) {
+                return { "limit": { "limit": limit, "actualValue": val } };
+            }
+            return null;
+        }
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the prohibited.ts  File in the src/app/validation Folder
+import { AbstractControl, AsyncValidatorFn, ValidationErrors } from "@angular/forms";
+import { Observable, Subject } from "rxjs";
+export class ProhibitedValidator {
+    static prohibitedTerms: string[] = ["ski", "swim"]
+    static prohibited(): AsyncValidatorFn {
+        return (control: AbstractControl): Promise<ValidationErrors | null>
+            | Observable<ValidationErrors | null> => {
+            let subject = new Subject<ValidationErrors | null>();
+            setTimeout(() => {
+                let match = false;
+                this.prohibitedTerms.forEach(word => {
+                    if ((control.value as string).toLowerCase().indexOf(word) > -1) {
+                        subject.next({ "prohibited": { prohibited: word } })
+                        match = true;
+                    }
+                });
+                if (!match) {
+                    subject.next(null);
+                }
+                subject.complete();
+            }, 1000);
+            return subject;
+        }
+    }
+}
+-------------------------------------------------------------------------
+The Contents of the app.component.html  File in the src/app  Folder
+ <router-outlet></router-outlet>
+-------------------------------------------------------------------------
+The Contents of the app.module.ts  File in the src/app  Folder
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { ModelModule } from "./model/model.module";
+import { CoreModule } from "./core/core.module";
+import { TableComponent } from "./core/table.component";
+import { FormComponent } from "./core/form.component";
+
+import { AppComponent } from './app.component';
+import { routing } from "./app.routing";
+@NgModule({
+ declarations: [AppComponent],
+ imports: [BrowserModule, ModelModule, CoreModule, routing],
+ providers: [],
+ bootstrap: [AppComponent]
+})
+export class AppModule { }
+-------------------------------------------------------------------------
+The Contents of the app.routing.ts  File in the src/app  Folder
+import { Routes, RouterModule } from "@angular/router";
+import { TableComponent } from "./core/table.component";
+import { FormComponent } from "./core/form.component";
+const routes: Routes = [
+    { path: "form/:mode/:id", component: FormComponent },
+    { path: "form/:mode", component: FormComponent },
+    { path: "", component: TableComponent }]
+export const routing = RouterModule.forRoot(routes);
+-------------------------------------------------------------------------
+The Contents of the index.html  File in the src  Folder
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>ExampleApp</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+
+<body class="m-1">
+  <app-root></app-root>
+</body>
+
+</html>
+ -------------------------------------------------------------------------
+The Contents of the restData.js  File in the client  Folder
+module.exports = function () {
+    var data = {
+        clients: [
+            { id: 1, name: "Kayak", category: "Watersports", bdate: "2/10/2024", active: false, price: 22.33 },
+            { id: 2, name: "Lifejacket", category: "Watersports", bdate: "2/10/2024", active: true, price: 22.33 },
+            { id: 3, name: "Soccer Ball", category: "Soccer", bdate: "2/10/2024", active: true, price: 22.33 },
+            { id: 4, name: "Corner Flags", category: "Soccer", bdate: "2/10/2024", active: true, price: 22.33 },
+            { id: 5, name: "Thinking Cap", category: "Chess", bdate: "2/10/2024", active: true, price: 22.33 }
+        ]
+    }
+    return data
+}
+npm run json
+ng serve -o 
+
+ 

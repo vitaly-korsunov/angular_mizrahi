@@ -1,0 +1,746 @@
+npm install -g npx
+ npx -p @angular/cli@13.0.3 ng new client
+ npm install bootstrap@5.1.3 
+ Add "styles": [
+              "src/styles.css",
+              "node_modules/bootstrap/dist/css/bootstrap.min.css"
+            ],
+-------------------------------------------------------------------------
+ Create folder:
+	src/app/model  
+	src/app/core		
+--------------------------------------------------------------------------
+The Contents of the client.model.ts File in the src/app/model Folder
+ export class Client {
+    constructor(public id?: number,
+        public name?: string,
+        public department: number = -1,
+        public bdate?: Date,
+        public gender?: string,
+        public active: boolean = false,
+        public level?: number) { }
+}
+-------------------------------------------------------------------------
+The Contents of the department.model.ts File in the src/app/model Folder
+ export class Department {
+    constructor(public id: number,
+        public department: string,
+    ) { }
+} 
+--------------------------------------------------------------------------
+The Contents of the static.datasource.ts File in the src/app/model Folder
+ import { Injectable } from "@angular/core";
+import { Client } from "./client.model";
+@Injectable()
+export class StaticDataSource {
+    private data: Client[];
+    constructor() {
+        this.data = new Array<Client>(
+            new Client(1, "Kayak", 1, new Date('2020-01-01'), "Male",true ,275),
+            new Client(2, "Lifejacket", 2, new Date('2020-11-01'),"Male",true,48.95),
+            new Client(3, "Soccer Ball", 2, new Date('2020-08-01'),"Male",true,19.50),
+            new Client(4, "Corner Flags", 1, new Date('2022-04-01'),"Male",true,34.95),
+            new Client(5, "Thinking Cap", 2, new Date('2021-06-01'),"Male",false,16)) 
+    }
+    getData(): Client[] {
+        return this.data;
+    }
+}
+-----------------------------------------------------------------------------------------
+The Contents of the repository.model.ts File in the src/app/model Folder
+ import { Injectable } from "@angular/core";
+import { Client } from "./client.model";
+import { Department } from "./department.model";
+import { RestDataSource } from "./rest.datasource";
+import { Observable, ReplaySubject } from "rxjs";
+//import { NgToastService } from "ng-angular-popup"
+
+@Injectable()
+export class Model {
+
+    private clients: Client[];
+    private departments: Department[];
+    private locator = (p: Client, id?: number) => p.id == id;
+    private replaySubject: ReplaySubject<Client[]>;
+    private replaySubjectDepartment: ReplaySubject<Department[]>;
+
+    constructor(private dataSource: RestDataSource 
+        ) {
+        this.clients = new Array<Client>();
+        this.departments = new Array<Department>();
+        this.replaySubject = new ReplaySubject<Client[]>(1);
+        this.replaySubjectDepartment = new ReplaySubject<Department[]>(1);
+
+        this.dataSource.getData().subscribe(data => {
+            this.clients = data
+            this.replaySubject.next(data);
+            this.replaySubject.complete();
+        });
+
+        this.dataSource.getDataDepartment().subscribe(data => {
+            this.departments = data
+            this.replaySubjectDepartment.next(data);
+            this.replaySubjectDepartment.complete();
+        });
+
+        this.dataSource.getData().subscribe(data => this.clients = data);
+        this.dataSource.getDataDepartment().subscribe(data => this.departments = data);
+    }
+    getClients(): Client[] {
+        return this.clients;
+    }
+
+    getDepartments(): Department[] {
+       console.log( this.departments);
+        return this.departments;
+    }
+
+    getClient(id: number): Client | undefined {
+        return this.clients.find(p => this.locator(p, id));
+    }
+
+    getClientObservable(id: number): Observable<Client | undefined> {
+        let subject = new ReplaySubject<Client | undefined>(1);
+        this.replaySubject.subscribe(clients => {
+            subject.next(this.clients.find(p => this.locator(p, id)));
+            subject.complete();
+        });
+        return subject;
+    }
+
+    saveClient(client: Client) {
+        if (client.id == 0 || client.id == null) {
+            this.dataSource.saveClient(client)
+                .subscribe({
+                    next: ((data) => {
+                        this.clients.push(data)
+                   //     this.ToastService.success("Done Save", "SUCCESS", 5000)
+                    }),
+                    error: (() => {
+                     //   this.ToastService.danger("Error Save"); 
+                    })
+                })
+        } else {
+            this.dataSource.updateClient(client).subscribe({
+                next: ((data) => {
+                    let index = this.clients
+                        .findIndex(item => this.locator(item, data.id));
+                    this.clients.splice(index, 1, data);
+                   // this.ToastService.success("Done Update", "SUCCESS", 5000)
+                }),
+                error: (() => {
+                    
+                 //   this.ToastService.danger("Error Update"); 
+                })
+            });
+        }
+    }
+
+    deleteClient(id: number) {
+        this.dataSource.deleteClient(id).subscribe(() => {
+            let index = this.clients.findIndex(p => this.locator(p, id));
+            if (index > -1) {
+             //   this.ToastService.success("Done Delete", "SUCCESS", 5000)
+                this.clients.splice(index, 1);
+            }
+        });
+    }
+}
+------------------------------------------------------------------------------
+The Contents of the model.module.ts File in the src/app/model Folder
+ import { NgModule } from "@angular/core";
+import { StaticDataSource } from "./static.datasource";
+import { Model } from "./repository.model";
+import { HttpClientModule } from "@angular/common/http";
+import { RestDataSource, REST_URL,REST_URL_DEP } from "./rest.datasource";
+@NgModule({
+ //providers: [Model, StaticDataSource],
+ imports: [HttpClientModule],
+ providers: [Model, RestDataSource,
+    { provide: REST_URL, useValue: `http://${location.hostname}:3500/clients` },
+    { provide: REST_URL_DEP, useValue: `http://${location.hostname}:3500/departments`} ]
+})
+export class ModelModule { }
+----------------------------------------------------------------------------------
+The Contents of the table.component.ts File in the src/app/core Folder
+import { Component } from "@angular/core";
+import { Client } from "../model/client.model";
+import { Department } from "../model/department.model";
+import { Model } from "../model/repository.model";
+@Component({
+    selector: "paTable",
+    templateUrl: "table.component.html"
+})
+export class TableComponent {
+
+    departments!: Department[];
+    public departmentMap: Map<number, string> = new Map<number, string>()
+
+    constructor(private model: Model
+    ) { }
+
+    getClient(key: number): Client | undefined {
+        return this.model.getClient(key);
+    }
+
+    getClients(): Client[] {
+        return this.model.getClients();
+    }
+
+    deleteClient(key?: number) {
+        if (key != undefined) {
+            this.model.deleteClient(key);
+        }
+    }
+
+     ngAfterContentChecked() {
+        this.refreshClientDepListMap();
+    }  
+
+     refreshClientDepListMap() {
+        this.departments = this.model.getDepartments();
+        for (let i = 0; i < this.departments.length; i++) {
+            this.departmentMap.set(this.departments[i].id, this.departments[i].department)
+        }
+    }  
+    //  colsAndRows: string[] = ['id', 'name', 'department', 'bdate', 'level', 'buttons'];
+}
+--------------------------------------------------------------------------------------------
+The Contents of the  form.component.html to the src/app/core folder
+  <div style="margin: auto;;padding:1%; width: 50%; ;">
+    <form [formGroup]="clientForm" #form="ngForm" (ngSubmit)="submitForm()" (reset)="resetForm()">
+        <div class="form-group">
+            <label>Name</label>
+            <input class="form-control" formControlName="name" />
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="clientForm; control:'name'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        
+        <div class="form-group">
+            <label>Bdate</label>
+            <input type="date" formControlName="bdate" class="form-control">
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="clientForm; control:'bdate'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <div class="form-group">
+            <label>Department</label>
+            <select class="form-select" aria-label="Default select example" formControlName="department">
+                <option [value]=-1>Select Department</option>
+                <option *ngFor="let department of departments" [value]="department.id">
+                    {{department.department}}
+                </option>
+            </select>
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="clientForm; control:'department'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        
+        <div class="form-group mt-3">
+            <div formcheck>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" formControlName="gender" id="inlineRadio1" value=Male>
+                    <label class="form-check-label" for="inlineRadio1">Male</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" formControlName="gender" id="inlineRadio2"
+                        value=Female>
+                    <label class="form-check-label" for="inlineRadio2">Female</label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group mt-3">
+            <div class="form-check">
+                <label>Active</label>
+                <input class="form-check-input" type="checkbox" formControlName="active" [checked]="true">
+            </div>
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="clientForm; control:'active'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <div class="form-group">
+            <label>level</label>
+            <input class="form-control" formControlName="level" [high]="300" [low]="10" />
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="clientForm; control:'level'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <div class="form-group">
+            <div class="mt-2">
+
+                <button type="submit" class="btn btn-primary" [class.btn-warning]="editing" [disabled]="form.invalid">
+                    {{editing ? "Save" : "Create"}}
+                </button>
+                <button type="button" class="btn btn-secondary m-1" routerLink="/">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+--------------------------------------------------------------------------------------
+The Contents of the form.component.css File in the src/app/core Folder
+ input.ng-dirty.ng-invalid { border: 2px solid #ff0000 }
+input.ng-dirty.ng-valid { border: 2px solid #6bc502 }
+--------------------------------------------------------------------------------------
+Configuring the Application in the app.module.ts File in the src/app Folder
+ import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { TableComponent } from "./core/table.component";
+import { FormComponent } from "./core/form.component";
+import { AppComponent } from './app.component';
+import { routing } from "./app.routing";
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { FormsModule, ReactiveFormsModule } from "@angular/forms";
+import { ModelModule } from "../app/model/model.module";
+import { ValidationHelper } from "./core/validation_helper";
+import { ValidationErrorsDirective } from "./core/validationErrors.directive";
+import { HiLowValidatorDirective } from "./validation/hilow";
+import { RouterModule } from "@angular/router";
+//import { NgToastModule } from 'ng-angular-popup';
+
+@NgModule({
+  declarations:
+    [
+      AppComponent,
+      HiLowValidatorDirective,
+      ValidationErrorsDirective,
+      ValidationHelper,
+      FormComponent,
+      TableComponent,
+    ],
+  imports:
+    [
+      BrowserModule,
+      ModelModule,
+      routing,
+      BrowserAnimationsModule,
+      ReactiveFormsModule,
+      FormsModule,
+      RouterModule,
+    // NgToastModule,
+    ],
+  providers: [],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+
+
+---------------------------------------------------------------
+Configuring the Application in the index.html File in the src Folder
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Client</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>
+
+---------------------------------------------------------------
+---------------------------------------------------------------
+The Contents of the validation_helper.ts File in the src/app/core Folder
+ import { Pipe } from "@angular/core";
+import { FormControl, ValidationErrors } from "@angular/forms";
+@Pipe({
+    name: "validationFormat"
+})
+export class ValidationHelper {
+    transform(source: any, name: any): string[] {
+        if (source instanceof FormControl) {
+            return this.formatMessages((source as FormControl).errors, name)
+        }
+        return this.formatMessages(source as ValidationErrors, name)
+    }
+    formatMessages(errors: ValidationErrors | null, name: string): string[] {
+        let messages: string[] = [];
+        for (let errorName in errors) {
+            switch (errorName) {
+                case "required":
+                    messages.push(`You must enter a ${name}`);
+                    break;
+                case "minlength":
+                    messages.push(`A ${name} must be at least
+ ${errors['minlength'].requiredLength}
+characters`);
+                    break;
+                case "pattern":
+                    messages.push(`The ${name} contains
+ illegal characters`);
+                    break;
+                case "limit":
+                    messages.push(`The ${name} must be less than
+ ${errors['limit'].limit}`);
+                    break;
+                case "hilow":
+                    messages.push(`The ${name} must be between
+ ${errors['hilow'].low} and ${errors['hilow'].high}`);
+                    break;
+            }
+        }
+        return messages;
+    }
+}
+--------------------------------------------------------------------------------
+The Contents of the src/app/validation folder and add to it a file named limit.ts
+ import { AbstractControl, ValidationErrors, ValidatorFn } from "@angular/forms";
+export class LimitValidator {
+    static Limit(limit: number): ValidatorFn {
+        return (control: AbstractControl): ValidationErrors | null => {
+            let val = parseFloat(control.value);
+            if (isNaN(val) || val > limit) {
+                return { "limit": { "limit": limit, "actualValue": val } };
+            }
+            return null;
+        }
+    }
+}
+--------------------------------------------------------------------------------
+The Contents of the src/app/validation folder and add to it a file named hilow.ts
+ import { Directive, Input, SimpleChanges } from "@angular/core";
+import {
+    AbstractControl, NG_VALIDATORS, ValidationErrors,
+    Validator, ValidatorFn
+} from "@angular/forms";
+export class HiLowValidator {
+    static HiLow(high: number, low: number): ValidatorFn {
+        return (control: AbstractControl): ValidationErrors | null => {
+            let val = parseFloat(control.value);
+            if (isNaN(val) || val > high || val < low) {
+                return { "hilow": { "high": high, "low": low, "actualValue": val } };
+            }
+            return null;
+        }
+    }
+}
+@Directive({
+    selector: 'input[high][low]',
+    providers: [{
+        provide: NG_VALIDATORS, useExisting: HiLowValidatorDirective,
+        multi: true
+    }]
+})
+export class HiLowValidatorDirective implements Validator {
+    @Input()
+    high: number | string | undefined
+    @Input()
+    low: number | string | undefined
+    validator?: (control: AbstractControl) => ValidationErrors | null;
+    ngOnChanges(changes: SimpleChanges): void {
+        if ("high" in changes || "low" in changes) {
+            let hival = typeof (this.high) == "string"
+                ? parseInt(this.high) : this.high;
+            let loval = typeof (this.low) == "string"
+                ? parseInt(this.low) : this.low;
+            this.validator = HiLowValidator.HiLow(hival ?? Number.MAX_VALUE,
+                loval ?? 0);
+        }
+    }
+    validate(control: AbstractControl): ValidationErrors | null {
+        return this.validator?.(control) ?? null;
+    }
+}
+--------------------------------------------------------------------------------
+The Contents of the  validationErrors.directive.ts to the src/app/core folder 
+import { Directive, Input, TemplateRef, ViewContainerRef } from "@angular/core";
+import { FormGroup } from "@angular/forms";
+import { ValidationHelper } from "./validation_helper";
+@Directive({
+    selector: "[validationErrors]"
+})
+export class ValidationErrorsDirective {
+    constructor(private container: ViewContainerRef,
+        private template: TemplateRef<Object>) { }
+    @Input("validationErrorsControl")
+    name: string = ""
+    @Input("validationErrorsLabel")
+    label?: string;
+    @Input("validationErrors")
+    formGroup?: FormGroup;
+
+    ngOnInit() {
+        let formatter = new ValidationHelper();
+        if (this.formGroup && this.name) {
+            let control = this.formGroup?.get(this.name);
+            if (control) {
+                control.statusChanges.subscribe(() => {
+                    if (this.container.length > 0) {
+                        this.container.clear();
+                    }
+                    if (control && control.dirty && control.invalid
+                        && control.errors) {
+                        formatter.formatMessages(control.errors,
+                            this.label ?? this.name).forEach(err => {
+                                this.container.createEmbeddedView(this.template,
+                                    { $implicit: err });
+                            })
+                    }
+                })
+            }
+        }
+    }
+}
+--------------------------------------------------------------------------------
+The Contents of the  form.component.ts to the src/app/core folder
+import { Component, OnInit } from "@angular/core";
+import { FormControl, NgForm, Validators, FormGroup } from "@angular/forms";
+import { Client } from "../model/client.model";
+import { Model } from "../model/repository.model"
+import { LimitValidator } from "../validation/limit";
+import { SelectValidator } from "../validation/select";
+import { ActivatedRoute, Router } from "@angular/router";
+import { Department } from "../model/department.model";
+
+@Component({
+    selector: "paForm",
+    templateUrl: "form.component.html",
+    styleUrls: ["form.component.css"]
+})
+export class FormComponent implements OnInit {
+
+    client: Client = new Client();
+    editing: boolean = false;
+    departments?: Department[]
+    Id !: number
+    constructor(public model: Model, activeRoute: ActivatedRoute,
+        public router: Router) {
+
+        this.departments = this.model.getDepartments();
+        this.editing = activeRoute.snapshot.params["mode"] == "edit";
+        let id = activeRoute.snapshot.params["id"];
+        this.Id = id
+        if (id != null) {
+            model.getClientObservable(id).subscribe(p => {
+                Object.assign(this.client, p || new Client());
+                this.clientForm.patchValue(this.client);
+            });
+        } else {
+            this.clientForm.patchValue(new Client);
+        }
+    }
+    ngOnInit(): void {
+       /*  let id = this.Id
+        if (id != null) {
+            this.model.getStudentObservable(id).subscribe(p => {
+                Object.assign(this.student, p || new Student());
+                this.studentForm.patchValue(this.student);
+            });
+        } else {
+            this.studentForm.patchValue(new Student);
+        } */
+    }
+    ngAfterContentInit(){
+        console.log("ngAfterContentInit")
+        this.departments=this.model.getDepartments();
+        console.log(this.departments)
+    }
+    clientForm: FormGroup = new FormGroup({
+        name: new FormControl("", {
+            validators: [
+                Validators.required,
+                Validators.minLength(3),
+                Validators.pattern("^[A-Za-z ]+$")
+            ],
+            updateOn: "change"
+        }),
+        department: new FormControl("", {
+            validators: [
+                Validators.required,
+                SelectValidator.Selected(0)
+            ],
+           // updateOn: "change"
+           //   updateOn
+        }),
+        bdate: new FormControl("", { validators: Validators.required }),
+        gender: new FormControl("", { validators: Validators.required }),
+        active: new FormControl("", {}),
+        level: new FormControl("", {
+            validators: [
+                Validators.required, Validators.pattern("^[0-9\.]+$"),
+                LimitValidator.Limit(300)
+            ]
+        }),
+    });
+
+    submitForm() {
+        if (this.clientForm.valid) {
+            Object.assign(this.client, this.clientForm.value);
+            this.model.saveClient(this.client);
+            this.router.navigateByUrl("/");
+        }
+    }
+
+    resetForm() {
+        this.editing = true;
+        this.client = new Client();
+        this.clientForm.reset();
+    }
+}
+----------------------------------------------------------------------------------
+The Contents of the src/app/validation folder and add to it a file named select.ts
+ import { AbstractControl, ValidationErrors, ValidatorFn } from "@angular/forms";
+export class SelectValidator {
+    static Selected(selected: number): ValidatorFn {
+        return (control: AbstractControl): ValidationErrors | null => {
+            let val = parseFloat(control.value);
+            if (isNaN(val) || val < selected) {
+                return { "selected": 
+                        { 
+                            "selected": selected, "actualValue": val 
+
+                       }};
+            }
+            return null;
+        }
+    }
+}
+--------------------------------------------------------------------------------------
+The Contents of the  table.component.html to the src/app/core folder
+  <div class="p-2 text-left">
+    <button class="btn btn-primary mt-1" routerLink="/form/create">
+        Create New Client
+    </button>
+</div>
+<div class="p-2 mt-2">
+    <table class="table table-sm table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Bdate</th>
+                <th>Gender</th>
+                <th>Avtive</th>
+                <th>Level</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr *ngFor="let item of getClients()">
+                <td>{{item.id}}</td>
+                <td>{{item.name}}</td>
+                <td>{{departmentMap.get(+item.department)}}</td>
+                <td>{{item.bdate | date:'dd/MM/yyyy'}}</td>
+                <td>{{item.gender}}</td>
+                <td>{{item.active}}</td>
+                <td>{{item.level }}</td>
+                <td class="text-center">
+                    <button class="btn btn-danger btn-sm m-1" (click)="deleteClient(item.id)">
+                        Delete
+                    </button>
+                    <button class="btn btn-warning btn-sm" [routerLink]="['/form', 'edit', item.id]">
+                        Edit
+                    </button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+-----------------------------------------------------------------------------------------------
+The Contents of the  rest.datasource.ts to the src/app/model folder 
+ import { Injectable, Inject, InjectionToken } from "@angular/core";
+import { HttpClient } from "@angular/common/http";
+import { Observable } from "rxjs";
+import { Client } from "./client.model";
+import{Department} from "./department.model"
+export const REST_URL = new InjectionToken("rest_url");
+export const REST_URL_DEP = new InjectionToken("rest_url_dep");
+
+@Injectable()
+export class RestDataSource {
+    
+    constructor(private http: HttpClient,
+        @Inject(REST_URL) private url: string,
+        @Inject(REST_URL_DEP) private url_dep: string) { }
+
+    getData(): Observable<Client[]> {
+        return this.sendRequest<Client[]>("GET", this.url);
+    }
+    getDataDepartment(): Observable<Department[]> {
+        return this.sendRequest<Department[]>("GET", this.url_dep);
+    }
+
+    saveClient(client: Client): Observable<Client> {
+        return this.sendRequest<Client>("POST", this.url, client);
+    }
+
+    updateClient(client: Client): Observable<Client> {
+        
+        return this.sendRequest<Client>("PUT",`${this.url}/${client.id}`, client);
+    }
+
+    deleteClient(id: number): Observable<Client> {
+        return this.sendRequest<Client>("DELETE", `${this.url}/${id}`);
+    }
+
+    private sendRequest<T>(verb: string, url: string, body?: Client)
+        : Observable<T> {
+        return this.http.request<T>(verb, url, {
+            body: body
+        });
+    }
+
+}
+-------------------------------------------------------------------------------------------
+The Contents of the  app.routing.ts to the src/app folder 
+ import { Routes, RouterModule } from "@angular/router";
+import { TableComponent } from "./core/table.component";
+import { FormComponent } from "./core/form.component";
+
+const routes: Routes = [
+    { path: "form/:mode/:id", component: FormComponent },
+    { path: "form/:mode", component: FormComponent },
+    { path: "", component: TableComponent }]
+export const routing = RouterModule.forRoot(routes);
+----------------------------------------------------------------------------------------------
+The Contents of the  app.component.html to the src/app folder
+<div class="container mt-4">
+  <router-outlet></router-outlet>
+</div>
+<!-- <ng-toast></ng-toast>  -->
+----------------------------------------------------------------------------------------------
+
+npm install json-server@0.17.0
+----------------------------------------------------------------------------------------------
+added a file called restData.js to the client
+folder 
+module.exports = function () {
+    var data = {
+        clients: [
+            
+            { id: 1, name: "Soccer Ball", department: 1, bdate:'10/10/2022',gender:"Male",active:true,level: 19.50 },
+            { id: 2, name: "Corner Flags", department: 2, bdate:'10/09/2022',gender:"Female",active:true,level: 49.50 }  ,
+            { id: 3, name: "Corner Flags", department: 3, bdate:'10/09/2022',gender:"Female",active:true,level: 49.50 }      
+        ],
+        departments: [
+            { id: 1, department: "Soccer" },
+            { id: 2,  department: "Chess" } ,
+            { id: 3,  department: "Tenis" }   			
+        ]
+    }
+    return data
+}
+---------------------------------------------------------------------------------------------
+  
+Adding a Script Entry in the package.json File in the exampleApp Folder
+ "test": "ng test",after 
+     "json": "json-server --p 3500 restData.js"
+npm run json
+
+  
