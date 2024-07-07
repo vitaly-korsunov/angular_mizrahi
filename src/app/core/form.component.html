@@ -1,0 +1,121 @@
+<div style="margin: auto;;padding:10%; width: 50%; ;">
+    <form [formGroup]="studentForm" #form="ngForm" (ngSubmit)="submitForm()">
+        <div class="form-group">
+            <label>Name</label>
+            <input class="form-control" formControlName="name" />
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="studentForm; control:'name'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <!--  <div class="form-group">
+            <label>department</label>
+            <input class="form-control" formControlName="department" />
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="studentForm; control:'department'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div> -->
+        <!--   <div>
+            <mat-label>Department</mat-label> 
+        </div>
+        <div>  
+            <mat-form-field>
+                <mat-select formControlName="departmentnew" placeholder="">
+                    <mat-option *ngFor="let department of departments" [value]="department.id">
+                        {{department.value}}
+                    </mat-option>
+                </mat-select>
+            </mat-form-field>
+        </div> -->
+        <!-- <div class="form-group">
+            <mat-radio-group formControlName="gender">
+                <mat-radio-button value="1">Male</mat-radio-button>
+                <mat-radio-button value="2">Female</mat-radio-button>
+                <mat-radio-button value="3">Other</mat-radio-button>
+            </mat-radio-group>
+        </div> -->
+        <div class="form-group">
+            <label>Bdate</label>
+            <input type="date" formControlName="bdate" class="form-control">
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="studentForm; control:'bdate'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <div class="form-group">
+            <label>Department</label>
+            <select class="form-select" aria-label="Default select example" formControlName="department">
+                <option [value]=-1>Select Department</option>
+                <option *ngFor="let department of departments" [value]="department.id">
+                    {{department.department}}
+                </option>
+            </select>
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="studentForm; control:'department'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <!--   <div class="form-group">
+            <label>Gender</label>
+            <div class="form-control">
+                <label class="radio-inline">
+                    <input type="radio" name="gender" value="male" [(ngModel)]="gender">
+                    Male
+                </label>
+                <label class="radio-inline">
+                    <input type="radio" name="gender" value="female" [(ngModel)]="gender">
+                    Female
+                </label>
+            </div>
+         </div> -->
+        <div class="form-group mt-3">
+            <div formcheck>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" formControlName="gender" id="inlineRadio1" value=Male>
+                    <label class="form-check-label" for="inlineRadio1">Male</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" formControlName="gender" id="inlineRadio2"
+                        value=Female>
+                    <label class="form-check-label" for="inlineRadio2">Female</label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group mt-3">
+            <div class="form-check">
+                <label>Active</label>
+                <input class="form-check-input" type="checkbox" formControlName="active" [checked]="true">
+            </div>
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="studentForm; control:'active'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <div class="form-group">
+            <label>level</label>
+            <input class="form-control" formControlName="level" [high]="300" [low]="10" />
+            <ul class="text-danger list-unstyled mt-1">
+                <li *validationErrors="studentForm; control:'level'; let err">
+                    {{ err }}
+                </li>
+            </ul>
+        </div>
+        <div class="form-group">
+            <div class="mt-2">
+
+                <button type="submit" class="btn btn-primary" [class.btn-warning]="editing" [disabled]="form.invalid">
+                    {{editing ? "Save" : "Create"}}
+                </button>
+                <button type="button" class="btn btn-secondary m-1" routerLink="/">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </form>
+</div>

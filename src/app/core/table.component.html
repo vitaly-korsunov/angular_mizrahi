@@ -1,0 +1,85 @@
+<mat-form-field>
+    <mat-label>Filter</mat-label>
+    <input matInput (keyup)="applyFilter($event)" placeholder="Ex. Mia" #input>
+</mat-form-field>
+ 
+
+<div class="mat-elevation-z8">
+    <table #myTable mat-table [dataSource]="dataSource" matSort>
+        <mat-text-column name="id"></mat-text-column>
+        <mat-text-column name="name"></mat-text-column>
+
+        <ng-container matColumnDef="department">
+            <th mat-header-cell *matHeaderCellDef>department</th>
+            <td mat-cell *matCellDef="let item"> {{departmentMap.get(+item.department)}} </td>
+        </ng-container>
+
+
+
+        <mat-text-column name="bdate"></mat-text-column>
+        <mat-text-column name="gender"></mat-text-column>
+        <mat-text-column name="active"></mat-text-column>
+        <ng-container matColumnDef="level">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>level</th>
+            <td mat-cell *matCellDef="let item"> {{item.level}} </td>
+        </ng-container>
+
+        <ng-container matColumnDef="buttons">
+            <th mat-header-cell *matHeaderCellDef></th>
+            <td mat-cell *matCellDef="let item">
+                <button mat-flat-button class="btnDelete" color="accent" (click)="deleteStudent(item.id)">
+                    Delete
+                </button>
+                <button mat-flat-button color="warn" [routerLink]="['/form', 'edit', item.id]">
+                    Edit
+                </button>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="colsAndRows"></tr>
+        <tr mat-row *matRowDef="let row; columns: colsAndRows"></tr>
+    </table>
+    <mat-paginator [pageSize]="5" [pageSizeOptions]="[2, 5, 10]">
+    </mat-paginator>  
+</div>
+
+<div class="p-2 text-left">
+    <button class="btn btn-primary mt-1" routerLink="/form/create">
+        Create New Student
+    </button>
+</div>
+<!-- 
+<div class="p-2 mt-2">
+    <table class="table table-sm table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Bdate</th>
+                <th>Gender</th>
+                <th>Avtive</th>
+                <th>Level</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr *ngFor="let item of getStudents()">
+                <td>{{item.id}}</td>
+                <td>{{item.name}}</td>
+                <td>{{departmentMap.get(+item.department)}}</td>
+                <td>{{item.bdate | date:'dd/MM/yyyy'}}</td>
+                <td>{{item.gender}}</td>
+                <td>{{item.active}}</td>
+                <td>{{item.level }}</td>
+                <td class="text-center">
+                    <button class="btn btn-danger btn-sm m-1" (click)="deleteStudent(item.id)">
+                        Delete
+                    </button>
+                    <button class="btn btn-warning btn-sm" [routerLink]="['/form', 'edit', item.id]">
+                        Edit
+                    </button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+-->
